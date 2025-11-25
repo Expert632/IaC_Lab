@@ -1,25 +1,10 @@
-
----
-
-## 3️⃣ `.github/workflows/iac-scan-checkov.yml` – Pipeline GitHub Actions
-
-Objectif : que les étudiants voient :
-- 📥 Checkout du code
-- 🔍 Lancement du scanner
-- ✅ Job vert ou ❌ rouge selon les vulnérabilités
-
-👉 **Crée les dossiers et fichier :**
-
-- Dossier : `.github/workflows/`
-- Fichier : `iac-scan-checkov.yml`
-
-👉 **Contenu à mettre dans `iac-scan-checkov.yml` :**
-
-```yaml
 name: IaC Security Scan with Checkov
 
 on:
   push:
+    branches:
+      - main
+      - master
   pull_request:
 
 jobs:
@@ -33,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: "3.x"
 
       - name: Install Checkov
         run: |
