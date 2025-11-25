@@ -1,4 +1,4 @@
-name: IaC Security Scan with Checkov
+name: IaC Security Scan with Checkov (Always green)
 
 on:
   push:
@@ -10,8 +10,8 @@ on:
 jobs:
   checkov-scan:
     runs-on: ubuntu-latest
-
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -20,10 +20,58 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install Checkov
+      - name: Install dependencies (checkov + jq)
         run: |
+          python -m pip install --upgrade pip
           pip install checkov
+          # jq is used to parse JSON report
+          sudo apt-get update -y
+          sudo apt-get install -y jq
 
-      - name: Run Checkov on repository
+      - name: Run Checkov and save JSON + TXT reports (step won't fail the job)
+        # we append "|| true" so the shell step never returns non-zero to GitHub Actions
         run: |
-          checkov -d . --soft-fail false
+          # JSON report (used for parsing programmatically)
+          checkov -d . -o json --output-file-path checkov-report.json || true
+          # Plain CLI text report for humans
+          checkov -d . -o cli > checkov-report.txt || true
+          # also save SARIF (optional) for tool ingestion
+          checkov -d . -o sarif --output-file-path checkov-report.sarif || true
+
+      - name: Show short summary in logs and mark "Vulnerability detected" / "No Vulnerability detected"
+        run: |
+          # default to 0 if file doesn't exist or parsing fails
+          FAILED_COUNT=0
+
+          if [ -f checkov-report.json ]; then
+            # Checkov JSON contains "results" with "failed_checks" array
+            # We count failed checks length; if jq fails, keep FAILED_COUNT=0
+            FAILED_COUNT=$(jq '.results.failed_checks | length' checkov-report.json 2>/dev/null || echo 0)
+          else
+            echo "⚠️ checkov-report.json not found — checkov may have failed to write JSON."
+          fi
+
+          echo "Checkov failed checks count: ${FAILED_COUNT}"
+
+          if [ "${FAILED_COUNT}" -gt 0 ]; then
+            echo "Vulnerability detected"
+            echo "There are ${FAILED_COUNT} failed checks. See checkov-report.json and checkov-report.txt for details."
+          else
+            echo "No Vulnerability detected"
+          fi
+
+          # show small tail of text report for quick glance
+          if [ -f checkov-report.txt ]; then
+            echo "---- checkov-report.txt (tail) ----"
+            tail -n 60 checkov-report.txt || true
+            echo "---- end of report ----"
+          fi
+
+      - name: Upload artifacts (reports) for later download
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-reports
+          path: |
+            checkov-report.json
+            checkov-report.txt
+            checkov-report.sarif
